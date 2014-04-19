@@ -1,59 +1,65 @@
 -module(hash).
--export([start/1,isLowerThanBar/2,test/0]).
+-export([start/1,test/0]).
 
 test() ->
-	hash:start(16#000001000007a47393270f686affb02be72bae461511c7dd237d22bf21364df7131feff2c8719409d792dc1d78071992a06008fa11a7084aca030357fd8fe261).
+	hash:start(16#000100000007a47393270f686affb02be72bae461511c7dd237d22bf21364df7131feff2c8719409d792dc1d78071992a06008fa11a7084aca030357fd8fe261).
 
 start(Bar) ->
-	put("Bar", Bar),
-	run().
+	spawn(fun() -> run(Bar) end).
 
-run() ->
+run(Bar) ->
 
-	Pids = spawn_loop(30),
-	receive_loop(Pids).
+	Pids = spawn_loop(8,[],dict:new()),
+	receive_loop(Pids,Bar,0,dict:new()).
 
-receive_loop([Pid | Pids]) ->
+receive_loop(Pids,Bar,Count,Strings) ->
 	receive 
 		{Pid, String, SHA} ->
-			case isLowerThanBar(SHA,get("Bar")) of
+			case (SHA < Bar) of
 				true ->
-					io:format("Found low hash ~p with string ~p ~n", [SHA, String]);
+					lists:map(fun(P) -> exit(P,normal) end, Pids),
+					io:format("Found low hash ~p with string ~p ~n After ~p attempts ~n", [SHA, String,Count + 1]),
+					exit(normal);
 				false ->
-					io:format("~p : ~p ~n", [Pid, SHA]),
+					%io:format("~p : ~p ~n", [Pid, SHA]),
 					exit(Pid,normal),
-					Pids1 = Pids ++ spawn_loop(1),
-					receive_loop(Pids1)
-			end
+					Strings1 = dict:store(String, 1, Strings),
+					PidsDeleted = lists:delete(Pid,Pids),
+					Pids1 = PidsDeleted ++ spawn_loop(1,[],Strings1),
+					receive_loop(Pids1,Bar,Count + 1,Strings1)
+			end;
+
+		status ->
+			io:format("Count: ~p ~n",[Count]),
+			receive_loop(Pids,Bar,Count,Strings);
+
+		kill ->
+			erlang:display("Dying"),
+			lists:map(fun(P) -> exit(P,normal) end, Pids),
+			exit(normal)
 	end.
 
-spawn_loop(0) ->
-	[];
-spawn_loop(Amount) when Amount > 0 ->
+spawn_loop(0,Pids,_Strings) ->
+	Pids;
+spawn_loop(Amount,Pids,Strings) when Amount > 0 ->
 	S = self(),
-	Pid = spawn(fun() -> S ! sha() end),
-	
-	[Pid] ++ spawn_loop(Amount - 1).
-
-isLowerThanBar(SHA,Bar) ->
-	(SHA < Bar).
+	Pids1 = Pids ++ [spawn(fun() -> S ! sha(Strings) end)],
+	spawn_loop(Amount - 1,Pids1,Strings).
 
 
-getRandomString() ->
+getRandomString(Strings) ->
 	String = random(crypto:rand_uniform(1,crypto:rand_uniform(2,65)),"!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|~}"),
-	case get(String) of 
-		undefined ->
-			put(String, "true"),
+	case dict:is_key(String,Strings) of 
+		false ->
 			String;
-		_Any ->
-			erlang:display("Already checked getting new"),
-			getRandomString()
+		true ->
+			getRandomString(Strings)
 	end.
 
 
 
-sha() ->
-	String = getRandomString(),
+sha(Strings) ->
+	String = getRandomString(Strings),
 	<<SHA:512>> = crypto:hash(sha512,String),
 	{self(), String, SHA}.
 
