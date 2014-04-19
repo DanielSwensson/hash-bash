@@ -11,7 +11,6 @@ start(Bar) ->
 run() ->
 
 	Pids = spawn_loop(30),
-	erlang:display(Pids),
 	receive_loop(Pids).
 
 receive_loop([Pid | Pids]) ->
@@ -55,16 +54,10 @@ getRandomString() ->
 
 sha() ->
 	String = getRandomString(),
-
-	% Pid = spawn(fun() -> S ! {self(), String ,sha(String)} end),
-	SHABin = crypto:hash(sha512,String),
-	<<SHA:512>> = SHABin,
+	<<SHA:512>> = crypto:hash(sha512,String),
 	{self(), String, SHA}.
 
-% stringToSHA([32 | _T], Res) ->
-% 	erlang:list_to_integer(Res,16);
-% stringToSHA([H | T], Res) ->
-% 	stringToSHA(T, Res ++ [H]).
+
 
 random(Length, AllowedChars) ->
     lists:foldl(fun(_, Acc) ->
